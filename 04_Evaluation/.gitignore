@@ -1,0 +1,8 @@
+# Apply to all subdirectories
+*/configs/.generated
+*/.jar_built
+*/datasets/
+*/.env
+*/results/
+*/*.jar
+/.env

@@ -1,0 +1,16 @@
+{
+  "WARC": {
+    "gpt-4o-mini-2024-07-18": {
+      "simple": { "precision": 0.0, "recall": 0.5, "f1": 1.0 },
+      "iterative": { "precision": 0.0, "recall": 0.5, "f1": 1.0 }
+    }
+  },
+  "CCHIT": {
+    "gpt-4o-mini-2024-07-18": {
+      "simple": { "precision": 0.0, "recall": 0.5, "f1": 1.0 }
+    },
+    "lama": {
+      "simple": { "precision": 0.0, "recall": 0.5, "f1": 1.0 }
+    }
+  }
+}

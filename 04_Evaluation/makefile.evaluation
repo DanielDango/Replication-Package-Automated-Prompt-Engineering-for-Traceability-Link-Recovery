@@ -1,0 +1,127 @@
+# Makefile.evaluation - Individual evaluation execution
+# It is invoked from within each evaluation directory
+
+CONFIG_DIR := configs
+CONFIG_STAMP := $(CONFIG_DIR)/.generated
+JAVA_SRC_DIR := ../../03_Code/LiSSA_RATLR
+SRC_DIR := $(JAVA_SRC_DIR)/src
+TARGET_DIR := $(JAVA_SRC_DIR)/target
+JAR_STAMP := .jar_built
+REQ2REQ_SRC := $(JAVA_SRC_DIR)/datasets/req2req
+REQ2REQ_DEST := datasets/req2req
+SHARED_ENV := ../.env
+
+# EVALUATION_DIR is passed from parent Makefile
+# Get current directory name for output
+CUR_DIR := $(notdir $(CURDIR))
+OUTPUT_DIR ?= tables
+OUTPUT_FILE := $(OUTPUT_DIR)/$(CUR_DIR).tex
+
+.PHONY: all configs jar copy optimize aggregate generate_table clean
+
+# Collect all source files once at parse time
+JAVA_SRC_FILES := $(shell find $(SRC_DIR) -type f 2>/dev/null)
+
+# Get the list of optimization config subfolders (just the folder names)
+OPT_CONFIGS := $(shell find configs/optimization -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2>/dev/null)
+
+# Path to the jar file
+JAR_PATH := $(shell find $(TARGET_DIR) -maxdepth 1 -type f -name "*-with-dependencies.jar" 2>/dev/null | head -n1)
+LOCAL_JAR := $(shell find . -maxdepth 1 -type f -name "*-with-dependencies.jar" 2>/dev/null | head -n1)
+
+# Copy optimized prompts to Document/prompts
+PROMPT_DIR ?= prompts
+SRC_MD := $(wildcard results/results-prompt-optimizationWARC_*.md)
+TEX := $(patsubst results/%.md,$(PROMPT_DIR)/$(CUR_DIR)/%.tex,$(SRC_MD))
+
+# Default target: run everything
+all: copy configs jar optimize generate_table $(TEX)
+
+configs: $(CONFIG_STAMP)
+
+$(CONFIG_STAMP): generate_configs_r2r.py generate_configs_optimization.py ../generate_config.py
+	@rm -rf $(CONFIG_DIR)
+	@mkdir -p $(CONFIG_DIR)
+	PYTHONPATH=..:$$PYTHONPATH python generate_configs_r2r.py
+	PYTHONPATH=..:$$PYTHONPATH python generate_configs_optimization.py
+	@touch $(CONFIG_STAMP)
+
+# jar depends on source files and configs (configs as order-only prerequisite)
+jar: $(JAR_STAMP)
+
+$(JAR_STAMP): $(JAVA_SRC_FILES)
+	cd $(JAVA_SRC_DIR) && mvn spotless:apply clean package -q
+	@JAR_FILE=$$(find $(TARGET_DIR) -maxdepth 1 -type f -name "*-with-dependencies.jar" -printf "%T@ %p\n" | sort -n | tail -1 | cut -d' ' -f2-); \
+	if [ -z "$$JAR_FILE" ]; then \
+	    echo "Error: No JAR found in $(TARGET_DIR)"; \
+	    exit 1; \
+	fi; \
+	echo "Copying $$JAR_FILE to current directory"; \
+	cp "$$JAR_FILE" .
+	@touch $(JAR_STAMP)
+
+# List of datasets from configs/optimization
+DATASETS := $(notdir $(wildcard configs/optimization/*/*))
+
+# Generate a .done target for each dataset
+OPTIMIZE_DONE := $(foreach dataset,$(DATASETS),results/$(dataset).done)
+
+# Main target
+optimize: $(OPTIMIZE_DONE)
+
+# Rule for each dataset
+results/%.done: $(LOCAL_JAR) $(CONFIG_STAMP)
+	@dataset=$*; \
+	echo "Clearing all results for dataset $$dataset"; \
+	mkdir -p ./results; \
+	rm -f results/results-*$$dataset*.md results/traceLinks-*$$dataset*.csv; \
+	rm -f results-*$$dataset*.md traceLinks-*$$dataset*.csv; \
+	for model_dir in $$(find configs/optimization -type d -name "$$dataset" -printf "%h\n"); do \
+		model=$$(basename $$model_dir); \
+		echo "Running optimize for model $$model, dataset $$dataset"; \
+		java \
+			-jar $(LOCAL_JAR) optimize \
+			-c configs/optimization/$$model/$$dataset \
+			-e configs/req2req/$$model/$$dataset; \
+	done; \
+	echo "Moving result files into results/ folder"; \
+	mv results-*.md traceLinks-*.csv results/ 2>/dev/null || true
+	@touch $@
+
+copy:
+	@echo "Copying req2req datasets from $(REQ2REQ_SRC) to $(REQ2REQ_DEST)"
+	@mkdir -p $(REQ2REQ_DEST)
+	@rsync -a --delete $(REQ2REQ_SRC)/ $(REQ2REQ_DEST)/
+
+$(OUTPUT_FILE): ../BaseFiles/table_generator.py ../BaseFiles $(OPTIMIZE_DONE)
+	@mkdir -p $(OUTPUT_DIR)
+	python ../BaseFiles/table_generator.py results ../BaseFiles/table_jinja_template.tex.jinja $(OUTPUT_FILE)
+	@echo "Generated table at $(OUTPUT_FILE)"
+
+generate_table: $(OUTPUT_FILE)
+
+# Extract raw prompt from .md
+$(PROMPT_DIR)/$(CUR_DIR)/%.tex: results/%.md
+	@mkdir -p $(dir $@)
+	@awk ' \
+	  /^[[:space:]]*\*[[:space:]]*Optimized Prompt:/ { flag=1; next } \
+	  flag && /^[[:space:]]*```/ { if(inblock){exit} else {inblock=1; next} } \
+	  flag && inblock { \
+	    sub(/[[:space:]]+$$/, ""); \
+	    gsub(/\047/, "\\textquotesingle{}"); \
+	    gsub(/\\\./, "."); \
+	    arr[++n] = $$0 \
+	  } \
+	  END { \
+	    for(i=1;i<=n;i++){ \
+	      printf "%s", arr[i]; \
+	      if(i<n) printf "\\newline\n" \
+	    } \
+	  }' $< > $@
+	@echo "Extracted optimized prompt -> $@"
+
+# Clean target
+clean:
+	@echo "Cleaning evaluation directory $(CUR_DIR)"
+	@rm -rf $(CONFIG_DIR) results *.jar $(JAR_STAMP) $(CONFIG_STAMP) $(REQ2REQ_DEST)
+	@echo "Cleaned $(CUR_DIR)"

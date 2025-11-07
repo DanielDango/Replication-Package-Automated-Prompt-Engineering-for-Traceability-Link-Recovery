@@ -1,0 +1,80 @@
+{
+  "cache_dir": "./cache/GANNT",
+  "gold_standard_configuration": {
+    "path": "./datasets/req2req/GANNT/answer.csv",
+    "hasHeader": "true"
+  },
+  "source_artifact_provider": {
+    "name": "text",
+    "args": {
+      "artifact_type": "requirement",
+      "path": "./datasets/req2req/GANNT/high"
+    }
+  },
+  "target_artifact_provider": {
+    "name": "text",
+    "args": {
+      "artifact_type": "requirement",
+      "path": "./datasets/req2req/GANNT/low"
+    }
+  },
+  "source_preprocessor": {
+    "name": "artifact",
+    "args": {}
+  },
+  "target_preprocessor": {
+    "name": "artifact",
+    "args": {}
+  },
+  "embedding_creator": {
+    "name": "openai",
+    "args": {
+      "model": "text-embedding-3-large"
+    }
+  },
+  "source_store": {
+    "name": "custom",
+    "args": {}
+  },
+  "target_store": {
+    "name": "cosine_similarity",
+    "args": {
+      "max_results": 4
+    }
+  },
+  "result_aggregator": {
+    "name": "any_connection",
+    "args": {}
+  },
+  "tracelinkid_postprocessor": {
+    "name": "identity",
+    "args": {}
+  },
+  "classifier": {
+    "name": "reasoning_openai",
+    "args": {
+      "model": "gpt-4o-mini-2024-07-18"
+    }
+  },
+  "prompt_optimizer": {
+    "name": "gradient_openai",
+    "args": {
+      "prompt": "\nBelow are two artifacts from the same software system. Is there a traceability link between (1) and (2)?\n\nGive your reasoning and then answer with 'yes' or 'no' enclosed in <trace> </trace>.\n(1) {source_type}: '''{source_content}''' \n(2) {target_type}: '''{target_content}'''.\n",
+      "maximum_iterations": 3,
+      "minibatch_size": "20",
+      "model": "gpt-4o-mini-2024-07-18"
+    }
+  },
+  "metric": {
+    "name": "pointwise",
+    "args": {}
+  },
+  "evaluator": {
+    "name": "ucb",
+    "args": {
+      "samples_per_eval": "16",
+      "eval_rounds": "4",
+      "eval_prompts_per_round": "1"
+    }
+  }
+}

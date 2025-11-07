@@ -1,0 +1,47 @@
+%! Author = Daniel Schwab
+%! Date = {{ date}}
+{# Define the mapping once #}
+{% set metric_rows = {
+    'precision': 'P.',
+    'recall': 'R.',
+    'f1': 'F\\textsubscript{1}'
+} %}
+
+{%- for dataset in datasets %}
+\providecommand{\ {{- dataset -}} }{ {{- dataset -}} }
+{% endfor %}
+
+\begin{tabularx}{\textwidth}{p{1.3em}l{% for prompt in prompts %}{% for model in models %} Z {% endfor %}{% endfor %}}
+    \toprule
+    \multirow{2}{1em}[-0.45em]{\rotatebox{90}{Dataset}} & \multirow{2}{*}[-0.9em]{\rotatebox{90}{Metric}} {% for prompt in prompts %} & \multicolumn{ {{ models|length }} }{c}{ {{- prompt -}} } {% endfor %}                                                                                         \\
+    {% for prompt in prompts %}
+    \cmidrule(lr){ {{ 3 + loop.index0 * (models|length) }}-{{ 3 + (loop.index0 + 1) * (models|length) - 1 }} }
+    {% endfor %}
+    &                           {% for prompt in prompts %}{% for model in models %} & {{ model }}       {% endfor %}{% endfor %}    \\
+    \midrule
+    {% for dataset in datasets %}
+    \multirow{ {{ metric_rows|length }} }{*}{\rotatebox{90}{{ '{\\' }}{{ dataset }}{{ '}}' }}
+    {# Loop over each metric-row mapping #}
+    {% for field, label in metric_rows.items() %}
+    {% set row_values = [] %}
+    {% for prompt in prompts %}
+    {% for model in models %}
+    {% set value = data.get(dataset, {}).get(model, {}).get(prompt, {}).get(field, '-') %}
+    {% if value != '-' %}
+    {% set _ = row_values.append(value | float) %}
+    {% endif %}
+    {% endfor %}
+    {% endfor %}
+    {% set max_val = row_values | max() %}
+    & {{ label }}
+    {%- for prompt in prompts %}
+    {% for model in models %}
+    {% set value = data.get(dataset, {}).get(model, {}).get(prompt, {}).get(field, '-') %}
+    & {% if value != '-' and (value | float == max_val) %}\textbf{ {{ value }} }{% else %}{{ value }}{% endif %}
+    {% endfor %}
+    {% endfor %} \\
+    {% endfor %}
+    \arrayrulecolor{kit-gray30} \midrule \arrayrulecolor{black}
+
+{% endfor %}
+\end{tabularx}
